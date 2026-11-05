@@ -30,6 +30,8 @@ SINGLE_TRAPS = {
 NUMBER_WORDS = {"zero":0,"no":0,"none":0,"one":1,"two":2,"three":3,"four":4,"five":5,"six":6,"seven":7,"eight":8,"nine":9,"ten":10,"eleven":11,"twelve":12}
 # answers that describe a line or a mark rather than name a thing, fixed before the run
 NON_NAMES = {"squiggle","scribble","line","curve","wave","wavy","zigzag","doodle","loop","swirl","scrawl","stroke","mark","pattern","shape","abstract","random","design","drawing","sketch"}
+# word forms of the same descriptions added after the first sampled answers of the main run showed them (curved, curl, curvy)
+NON_NAMES |= {"curved","curvy","curly","curl","curling","squiggly","wiggly","wiggle","scribbled","scribbly","swirly","swirled","swirling","loopy","looped","looping","lined","linear","wavey","waving","zigzagged","zigzaggy","doodled","scrawled","sketched","stroked","marked","shaped","designed","drawn"}
 RESAMPLES = 10000
 NUMBER = r"(\d+|" + "|".join(NUMBER_WORDS) + r")"
 
