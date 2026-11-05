@@ -24,7 +24,15 @@ DATASETS = {
 MODELS = {
     "qwen3vl2b":("Qwen/Qwen3-VL-2B-Instruct","89644892e4d85e24eaac8bacfd4f463576704203"),
 }
-MAX_NEW_TOKENS = 40
+# the reply is started with the first words of the required answer format so the model answers instead of explaining
+# the same start is used for every version of a dataset so versions stay comparable
+PREFILL = {
+    "shapes":"circle:",
+    "hard":"circle:",
+    "objects":"apple:",
+    "lines":"box:",
+}
+MAX_NEW_TOKENS = 64
 
 parser = argparse.ArgumentParser(description="save the answers of one vlm on the clutter datasets")
 parser.add_argument("--model",default="qwen3vl2b",choices=list(MODELS))
@@ -43,7 +51,7 @@ model.eval()
 
 environment = {
     "model":repo,"revision":revision,"dtype":"float16","split":args.split,"per_version":args.per_version,
-    "max_new_tokens":MAX_NEW_TOKENS,"decoding":"greedy","python":sys.version,
+    "max_new_tokens":MAX_NEW_TOKENS,"prefill":PREFILL,"decoding":"greedy","python":sys.version,
     "torch":torch.__version__,"transformers":__import__("transformers").__version__,
     "gpu":torch.cuda.get_device_name(0),"started":time.strftime("%Y-%m-%d %H:%M:%S"),
 }
@@ -51,13 +59,15 @@ environment = {
 print(f"{repo} at {revision[:8]} on {environment['gpu']} with transformers {environment['transformers']}")
 
 
-def ask_model(image,question):
-    """Return the greedy text answer of the model for one image and question"""
-    messages = [{"role":"user","content":[{"type":"image","image":image},{"type":"text","text":question}]}]
-    inputs = processor.apply_chat_template(messages,tokenize=True,add_generation_prompt=True,return_dict=True,return_tensors="pt").to(model.device)
+def ask_model(image,question,prefill):
+    """Return the greedy text answer of the model with its reply started by the prefill"""
+    messages = [{"role":"user","content":[{"type":"image"},{"type":"text","text":question}]}]
+    prompt = processor.apply_chat_template(messages,tokenize=False,add_generation_prompt=True)+prefill
+    inputs = processor(text=[prompt],images=[image],return_tensors="pt").to(model.device)
     with torch.no_grad():
         output = model.generate(**inputs,max_new_tokens=MAX_NEW_TOKENS,do_sample=False)
-    return processor.batch_decode(output[:,inputs["input_ids"].shape[1]:],skip_special_tokens=True)[0].strip()
+    # putting the prefill back in front so the scorer sees the whole answer
+    return prefill+processor.batch_decode(output[:,inputs["input_ids"].shape[1]:],skip_special_tokens=True)[0].rstrip()
 
 
 for name in args.datasets.split(","):
@@ -75,7 +85,7 @@ for name in args.datasets.split(","):
             # skipping the rest of a version once the trial limit is reached
             if args.per_version and seen[version]>args.per_version:
                 continue
-            answer = ask_model(example["image"],example["question"])
+            answer = ask_model(example["image"],example["question"],PREFILL[name])
             writer.writerow([example["image_id"],answer])
             kept += 1
             # printing the first question and answer so the exact wording can be checked
