@@ -1,0 +1,89 @@
+# runs one vlm on the four clutter datasets and saves its raw answers as one csv per dataset
+# meant for a kaggle gpu notebook with the HF_TOKEN secret set as an environment variable
+import argparse
+import csv
+import json
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+import torch
+from datasets import load_dataset
+from huggingface_hub import hf_hub_download
+from transformers import AutoProcessor
+from transformers import Qwen3VLForConditionalGeneration
+
+DATASETS = {
+    "shapes":"atml-shapes-vqa/shapes-vqa-distractors",
+    "hard":"atml-shapes-vqa/shapes-vqa-hard",
+    "objects":"atml-shapes-vqa/objects-vqa",
+    "lines":"atml-shapes-vqa/lines-vqa",
+}
+# pinned so every run uses exactly the same weights as our earlier studies
+MODELS = {
+    "qwen3vl2b":("Qwen/Qwen3-VL-2B-Instruct","89644892e4d85e24eaac8bacfd4f463576704203"),
+}
+MAX_NEW_TOKENS = 40
+
+parser = argparse.ArgumentParser(description="save the answers of one vlm on the clutter datasets")
+parser.add_argument("--model",default="qwen3vl2b",choices=list(MODELS))
+parser.add_argument("--split",default="test")
+parser.add_argument("--per-version",type=int,default=0,help="keep only the first n images of each version, 0 keeps all")
+parser.add_argument("--datasets",default=",".join(DATASETS))
+parser.add_argument("--out",default="/kaggle/working/preds")
+args = parser.parse_args()
+
+out = Path(args.out)
+out.mkdir(parents=True,exist_ok=True)
+repo,revision = MODELS[args.model]
+model = Qwen3VLForConditionalGeneration.from_pretrained(repo,revision=revision,dtype=torch.float16,device_map="cuda:0",attn_implementation="sdpa")
+processor = AutoProcessor.from_pretrained(repo,revision=revision)
+model.eval()
+
+environment = {
+    "model":repo,"revision":revision,"dtype":"float16","split":args.split,"per_version":args.per_version,
+    "max_new_tokens":MAX_NEW_TOKENS,"decoding":"greedy","python":sys.version,
+    "torch":torch.__version__,"transformers":__import__("transformers").__version__,
+    "gpu":torch.cuda.get_device_name(0),"started":time.strftime("%Y-%m-%d %H:%M:%S"),
+}
+(out/f"environment_{args.model}.json").write_text(json.dumps(environment,indent=1),encoding="utf-8")
+print(f"{repo} at {revision[:8]} on {environment['gpu']} with transformers {environment['transformers']}")
+
+
+def ask_model(image,question):
+    """Return the greedy text answer of the model for one image and question"""
+    messages = [{"role":"user","content":[{"type":"image","image":image},{"type":"text","text":question}]}]
+    inputs = processor.apply_chat_template(messages,tokenize=True,add_generation_prompt=True,return_dict=True,return_tensors="pt").to(model.device)
+    with torch.no_grad():
+        output = model.generate(**inputs,max_new_tokens=MAX_NEW_TOKENS,do_sample=False)
+    return processor.batch_decode(output[:,inputs["input_ids"].shape[1]:],skip_special_tokens=True)[0].strip()
+
+
+for name in args.datasets.split(","):
+    data = load_dataset(DATASETS[name])[args.split]
+    path = out/f"preds_{name}_{args.model}.csv"
+    started = time.time()
+    seen = {}
+    kept = 0
+    with open(path,"w",newline="",encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["image_id","prediction"])
+        for example in data:
+            version = example["version"]
+            seen[version] = seen.get(version,0)+1
+            # skipping the rest of a version once the trial limit is reached
+            if args.per_version and seen[version]>args.per_version:
+                continue
+            answer = ask_model(example["image"],example["question"])
+            writer.writerow([example["image_id"],answer])
+            kept += 1
+            # printing the first question and answer so the exact wording can be checked
+            if kept==1:
+                print(f"--- {name} first question ---\n{example['question']}\n--- answer ---\n{answer}\n--- truth ---\n{example['answer']}")
+    minutes = (time.time()-started)/60
+    print(f"{name}: {kept} images in {minutes:.1f} min ({60*minutes/max(kept,1):.2f} s per image) saved to {path}")
+    # scoring only full runs because the scorer counts skipped images as missing
+    if not args.per_version:
+        scorer = hf_hub_download(DATASETS[name],"vqa_scoring.py",repo_type="dataset",local_dir=str(out))
+        subprocess.run([sys.executable,scorer,"--predictions",str(path),"--split",args.split,"--out",str(out/f"scores_{name}_{args.model}.csv")],check=True)
