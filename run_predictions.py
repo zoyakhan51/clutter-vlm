@@ -9,21 +9,19 @@ import time
 from pathlib import Path
 
 import torch
+from datasets import concatenate_datasets
 from datasets import load_dataset
 from huggingface_hub import hf_hub_download
 from transformers import AutoProcessor
 from transformers import Qwen3VLForConditionalGeneration
+
+from models import MODELS
 
 DATASETS = {
     "shapes":"atml-shapes-vqa/shapes-vqa-distractors",
     "hard":"atml-shapes-vqa/shapes-vqa-hard",
     "objects":"atml-shapes-vqa/objects-vqa",
     "lines":"atml-shapes-vqa/lines-vqa",
-}
-# pinned so every run uses exactly the same weights as our earlier studies
-MODELS = {
-    "qwen3vl2b":("Qwen/Qwen3-VL-2B-Instruct","89644892e4d85e24eaac8bacfd4f463576704203"),
-    "qwen3vl4b":("Qwen/Qwen3-VL-4B-Instruct","ebb281ec70b05090aa6165b016eac8ec08e71b17"),
 }
 # the reply is started with the first words of the required answer format so the model answers instead of explaining
 # the same start is used for every version of a dataset so versions stay comparable
@@ -36,8 +34,8 @@ PREFILL = {
 MAX_NEW_TOKENS = 64
 
 parser = argparse.ArgumentParser(description="save the answers of one vlm on the clutter datasets")
-parser.add_argument("--model",default="qwen3vl2b",choices=list(MODELS))
-parser.add_argument("--split",default="test")
+parser.add_argument("--model",default="qwen3vl4b",choices=list(MODELS))
+parser.add_argument("--split",default="all",help="train, validation, test or all")
 parser.add_argument("--per-version",type=int,default=0,help="keep only the first n images of each version, 0 keeps all")
 parser.add_argument("--datasets",default=",".join(DATASETS))
 parser.add_argument("--out",default="/kaggle/working/preds")
@@ -72,7 +70,9 @@ def ask_model(image,question,prefill):
 
 
 for name in args.datasets.split(","):
-    data = load_dataset(DATASETS[name])[args.split]
+    data = load_dataset(DATASETS[name])
+    # all joins the three splits since nobody trains on these datasets in this study
+    data = concatenate_datasets([data[split] for split in data]) if args.split=="all" else data[args.split]
     path = out/f"preds_{name}_{args.model}.csv"
     started = time.time()
     seen = {}
@@ -99,4 +99,6 @@ for name in args.datasets.split(","):
     print(f"{name}: {kept} images in {minutes:.1f} min ({60*minutes/max(kept,1):.2f} s per image) saved to {path}")
     # the scorer skips images without a prediction so trial runs are scored on the images they kept
     scorer = hf_hub_download(DATASETS[name],"vqa_scoring.py",repo_type="dataset",local_dir=str(out/f"scorer_{name}"))
-    subprocess.run([sys.executable,scorer,"--predictions",str(path),"--split",args.split,"--out",str(out/f"scores_{name}_{args.model}.csv")],check=True)
+    # a failing scorer is reported but does not stop the remaining datasets from running
+    code = subprocess.run([sys.executable,scorer,"--predictions",str(path),"--split",args.split,"--out",str(out/f"scores_{name}_{args.model}.csv")]).returncode
+    print(f"{name}: scorer exit code {code}")

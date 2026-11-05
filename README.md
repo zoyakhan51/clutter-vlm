@@ -11,11 +11,15 @@ GPU T4, internet on, secret `HF_TOKEN` (a read token of an account in the `atml-
 ```
 !git clone -q https://github.com/zoyakhan51/clutter-vlm /tmp/code && cd /tmp/code && git checkout -q COMMIT
 import os; from kaggle_secrets import UserSecretsClient; os.environ["HF_TOKEN"] = UserSecretsClient().get_secret("HF_TOKEN")
-!cd /tmp/code && python run_predictions.py --per-version 20
+!cd /tmp/code && python run_predictions.py --model qwen3vl4b --split all
+!cd /tmp/code && python run_nameability.py --model qwen3vl4b
+!cd /tmp/code && python analysis.py --model qwen3vl4b
 ```
 
-Replace `COMMIT` with the commit being run. `--per-version 20` is the trial run (first 20 images of each version). Drop it for the full test-split run. Both run each dataset's official `vqa_scoring.py` on the images they kept.
+Replace `COMMIT` with the commit being run. Add `--per-version 20` to the first two scripts for a trial run.
 
-The model's reply is started with the first words of each dataset's answer format (`circle:`, `apple:`, `box:`), so it answers instead of explaining.
+- `run_predictions.py` answers every image of the four datasets and runs each dataset's official `vqa_scoring.py`. The model's reply is started with the first words of each answer format (`circle:`, `apple:`, `box:`), so it answers instead of explaining.
+- `run_nameability.py` cuts every squiggle and every `other_shapes` shape of Shapes Hard out of its image and records what the model calls it (H2 nameability score, Stage 0 naming check).
+- `analysis.py` computes every H1-H8 result with 95% bootstrap intervals over scenes, exactly as fixed in `docs/study3_methodology.pdf`.
 
-Outputs go to `/kaggle/working/preds`: one `preds_<dataset>_<model>.csv` per dataset, `scores_*.csv` with per-image scores, and `environment_<model>.json` with the exact versions used.
+Outputs: `/kaggle/working/preds` (answers, scorer output, nameability answers, `environment_<model>.json`) and `/kaggle/working/results` (`results_<model>.json` and a plain-text `summary_<model>.txt`).
