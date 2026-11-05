@@ -23,6 +23,7 @@ DATASETS = {
 # pinned so every run uses exactly the same weights as our earlier studies
 MODELS = {
     "qwen3vl2b":("Qwen/Qwen3-VL-2B-Instruct","89644892e4d85e24eaac8bacfd4f463576704203"),
+    "qwen3vl4b":("Qwen/Qwen3-VL-4B-Instruct","ebb281ec70b05090aa6165b016eac8ec08e71b17"),
 }
 # the reply is started with the first words of the required answer format so the model answers instead of explaining
 # the same start is used for every version of a dataset so versions stay comparable
@@ -88,6 +89,9 @@ for name in args.datasets.split(","):
             answer = ask_model(example["image"],example["question"],PREFILL[name])
             writer.writerow([example["image_id"],answer])
             kept += 1
+            # printing one object list of the versions whose distractors the analysis needs to read
+            if version in ("other_shapes","lookalikes") and seen[version]==1:
+                print(f"--- {name} {version} objects ---\n{str(example['objects'])[:1500]}")
             # printing the first question and answer so the exact wording can be checked
             if kept==1:
                 print(f"--- {name} first question ---\n{example['question']}\n--- answer ---\n{answer}\n--- truth ---\n{example['answer']}")
