@@ -14,6 +14,6 @@ import os; from kaggle_secrets import UserSecretsClient; os.environ["HF_TOKEN"] 
 !cd /tmp/code && python run_predictions.py --per-version 20
 ```
 
-Replace `COMMIT` with the commit being run. `--per-version 20` is the trial run (first 20 images of each version, no scoring). Drop it for the full test-split run, which also runs each dataset's official `vqa_scoring.py`.
+Replace `COMMIT` with the commit being run. `--per-version 20` is the trial run (first 20 images of each version). Drop it for the full test-split run. Both run each dataset's official `vqa_scoring.py` on the images they kept.
 
-Outputs go to `/kaggle/working/preds`: one `preds_<dataset>_<model>.csv` per dataset, `scores_*.csv` on full runs, and `environment_<model>.json` with the exact versions used.
+Outputs go to `/kaggle/working/preds`: one `preds_<dataset>_<model>.csv` per dataset, `scores_*.csv` with per-image scores, and `environment_<model>.json` with the exact versions used.

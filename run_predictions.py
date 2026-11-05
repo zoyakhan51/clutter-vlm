@@ -83,7 +83,6 @@ for name in args.datasets.split(","):
                 print(f"--- {name} first question ---\n{example['question']}\n--- answer ---\n{answer}\n--- truth ---\n{example['answer']}")
     minutes = (time.time()-started)/60
     print(f"{name}: {kept} images in {minutes:.1f} min ({60*minutes/max(kept,1):.2f} s per image) saved to {path}")
-    # scoring only full runs because the scorer counts skipped images as missing
-    if not args.per_version:
-        scorer = hf_hub_download(DATASETS[name],"vqa_scoring.py",repo_type="dataset",local_dir=str(out))
-        subprocess.run([sys.executable,scorer,"--predictions",str(path),"--split",args.split,"--out",str(out/f"scores_{name}_{args.model}.csv")],check=True)
+    # the scorer skips images without a prediction so trial runs are scored on the images they kept
+    scorer = hf_hub_download(DATASETS[name],"vqa_scoring.py",repo_type="dataset",local_dir=str(out/f"scorer_{name}"))
+    subprocess.run([sys.executable,scorer,"--predictions",str(path),"--split",args.split,"--out",str(out/f"scores_{name}_{args.model}.csv")],check=True)
