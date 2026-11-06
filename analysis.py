@@ -411,9 +411,11 @@ def summary(out):
         lines.append(f"H1 conclusion: {out['H1']['conclusion']}")
     if "main_slope_per_doubling" in out["H2"]:
         r = out["H2"]["main_slope_per_doubling"]
-        lines.append(f"H2 accuracy per doubling of curves: {r['value']:+.3f} [{r['low']:+.3f},{r['high']:+.3f}] -> {verdict(r)}")
+        # h2 has two competing ideas so the label names the idea that wins instead of one prediction
+        idea = {"below 0":"busy clutter idea wins","above 0":"names idea wins"}.get(verdict(r,"below").split(" (")[0],"unclear")
+        lines.append(f"H2 accuracy per doubling of curves: {r['value']:+.3f} [{r['low']:+.3f},{r['high']:+.3f}] -> {idea}")
     for k,r in out["H2"].get("untangling",{}).items():
-        lines.append(f"H2 untangling {k}: {r['value']:+.3f} [{r['low']:+.3f},{r['high']:+.3f}] -> {verdict(r)}")
+        lines.append(f"H2 untangling {k}: {r['value']:+.3f} [{r['low']:+.3f},{r['high']:+.3f}] -> {verdict(r,'below').split(' (')[0]}")
     for name,rows in out["H4"].items():
         r = rows["lookalikes_minus_next"]
         lines.append(f"H4 {name} lookalikes minus {rows['next_highest']}: {r['value']:+.3f} [{r['low']:+.3f},{r['high']:+.3f}] -> {verdict(r)}")
