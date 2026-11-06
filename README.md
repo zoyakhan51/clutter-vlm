@@ -66,13 +66,19 @@ Code commit for every cell below: `cadcd07` (the trials of InternVL, Molmo and G
    - Save Version, Save & Run All (Commit), Save. It runs in the background; the tab can be closed.
 4. Kaggle runs at most 2 GPU notebooks at once per account and stops any run after 12 hours.
 
-### Notebook 1: Gemma 4 E4B full run (about 9 hours)
+### Notebook 1: Gemma 4 E4B full run, in two parts
+In one go Gemma would take about 11 to 12 hours, too close to Kaggle's 12 hour limit, so it runs in two parts. Same first three lines both times, only the last line changes.
 ```
 !pip install -q transformers==5.22.1
 !git clone -q https://github.com/zoyakhan51/clutter-vlm /tmp/code && cd /tmp/code && git checkout -q cadcd07
 import os; from kaggle_secrets import UserSecretsClient; os.environ["HF_TOKEN"] = UserSecretsClient().get_secret("HF_TOKEN")
-!cd /tmp/code && python run_predictions.py --model gemma4e4b --split all && python run_nameability.py --model gemma4e4b
+!cd /tmp/code && python run_predictions.py --model gemma4e4b --split all
 ```
+Part 1 above: all answers (about 8 hours). Part 2, the naming step (about 3 hours), as a new version or a second notebook, with this last line:
+```
+!cd /tmp/code && python run_nameability.py --model gemma4e4b
+```
+Download the output of both parts.
 
 ### Notebook 2: Qwen3-VL-8B trial (about 30 minutes), then the two halves of its full run
 Trial first. It is the only model not tested yet:
@@ -94,7 +100,7 @@ Part A, Shapes and Shapes Hard (about 6 to 7 hours):
 ```
 !cd /tmp/code && python run_predictions.py --model qwen3vl8b --split all --datasets shapes,hard
 ```
-Part B, Objects, Lines and the naming step (about 4 hours), as a new version once part A is done or in a free slot:
+Part B, Objects, Lines and the naming step (about 6 to 7 hours), as a new version once part A is done or in a free slot:
 ```
 !cd /tmp/code && python run_predictions.py --model qwen3vl8b --split all --datasets objects,lines && python run_nameability.py --model qwen3vl8b
 ```
