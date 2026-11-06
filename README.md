@@ -47,6 +47,6 @@ import os; from kaggle_secrets import UserSecretsClient; os.environ["HF_TOKEN"] 
 !cd /tmp/code && python run_nameability.py --model MODEL --per-version 20
 ```
 
-1. Trial first (the cell above, about 20 minutes). Save Version, then Save & Run All. Send the log back so the answers can be checked and the model's revision pinned in `models.py`.
-2. Main run: the same cell with the new commit and without `--per-version 20` (about 5 hours for a 4B model, longer for 8B). Save & Run All, then the tab can be closed.
+1. Trial first (the cell above, about 20 minutes). Save Version, then Save & Run All. Send the log back so the answers can be checked. The model weights are already pinned in `models.py`.
+2. Main run: the same cell without `--per-version 20` (and with a new commit only if the trial needed a fix) (about 5 hours for a 4B model, longer for 8B). Save & Run All, then the tab can be closed.
 3. Results: share the notebook with the study owner's Kaggle account, or download its output (the `preds` folder) and send it.
