@@ -280,7 +280,8 @@ def name_share(answers):
 def named_right(shape,answer):
     """Say whether the one word greedy answer names the shape that was drawn"""
     answer = str(answer).lower()
-    synonyms = {"heart":["heart"],"moon":["moon","crescent"],"cross":["cross","plus"],"lightning":["lightning","bolt","thunder","zigzag"]}
+    # the dataset calls the lightning shape bolt so both spellings point to the same synonyms
+    synonyms = {"heart":["heart"],"moon":["moon","crescent"],"cross":["cross","plus"],"bolt":["lightning","bolt","thunder","zigzag"],"lightning":["lightning","bolt","thunder","zigzag"]}
     key = next((k for k in synonyms if k in str(shape).lower()),str(shape).lower())
     return any(s in answer for s in synonyms.get(key,[key]))
 
