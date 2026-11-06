@@ -152,6 +152,9 @@ def load_frame(name,meta,preds):
         frame["correct"] = (frame["pred_box"]==frame["target_box"].astype(int)).astype(float)
         return frame
     classes = CLASSES[name]
+    # the dataset stores the true counts as text so they are turned into numbers first
+    for c in classes:
+        frame["count_"+c] = pd.to_numeric(frame["count_"+c])
     parsed = [parse_counts(t,classes) for t in frame["prediction"]]
     frame["parsed"] = [p is not None for p in parsed]
     for c in classes:
@@ -442,6 +445,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
     from datasets import concatenate_datasets
     from datasets import load_dataset
+    # finding the answers of an earlier run attached as input when the given folder does not exist
+    if not Path(args.preds).exists():
+        found = sorted(Path("/kaggle/input").rglob(f"preds_shapes_{args.model}.csv"))
+        assert found,f"no answers of {args.model} found in {args.preds} or under /kaggle/input"
+        args.preds = str(found[0].parent)
+    print(f"reading answers from {args.preds}")
     frames = {}
     for name in args.datasets.split(","):
         path = Path(args.preds)/f"preds_{name}_{args.model}.csv"
