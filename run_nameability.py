@@ -9,9 +9,10 @@ from pathlib import Path
 import torch
 from datasets import concatenate_datasets
 from datasets import load_dataset
+from huggingface_hub import HfApi
 from PIL import Image
 from transformers import AutoProcessor
-from transformers import Qwen3VLForConditionalGeneration
+from transformers import AutoModelForImageTextToText
 
 from models import MODELS
 
@@ -33,7 +34,13 @@ args = parser.parse_args()
 out = Path(args.out)
 out.mkdir(parents=True,exist_ok=True)
 repo,revision = MODELS[args.model]
-model = Qwen3VLForConditionalGeneration.from_pretrained(repo,revision=revision,dtype=torch.float16,device_map="cuda:0",attn_implementation="sdpa")
+# a model without a pinned revision uses the newest weights, whose exact revision is printed and saved below
+if revision is None:
+    revision = HfApi().model_info(repo).sha
+print(f"{args.model}: {repo} at revision {revision}")
+# the two models already run keep the single gpu setup of the first main run, the others are spread over every gpu kaggle gives
+first_setup = args.model in ("qwen3vl2b","qwen3vl4b")
+model = AutoModelForImageTextToText.from_pretrained(repo,revision=revision,dtype=torch.float16,device_map="cuda:0" if first_setup else "auto",attn_implementation="sdpa")
 processor = AutoProcessor.from_pretrained(repo,revision=revision)
 model.eval()
 torch.manual_seed(SEED)
@@ -42,8 +49,12 @@ torch.manual_seed(SEED)
 def answers_for(image,question,sample):
     """Return five sampled answers or one greedy answer of the model for one cropped shape"""
     messages = [{"role":"user","content":[{"type":"image"},{"type":"text","text":question}]}]
-    prompt = processor.apply_chat_template(messages,tokenize=False,add_generation_prompt=True)
-    inputs = processor(text=[prompt],images=[image],return_tensors="pt").to(model.device)
+    prompt = processor.apply_chat_template(messages,tokenize=False,add_generation_prompt=True,enable_thinking=False)
+    # the chat template already holds every special token, so the processor adds none of its own
+    inputs = processor(text=[prompt],images=[image],return_tensors="pt",add_special_tokens=False).to(model.device)
+    # the other models need the image numbers in the same 16-bit format as their weights
+    if not first_setup:
+        inputs = inputs.to(dtype=model.dtype)
     settings = dict(SAMPLING,num_return_sequences=SAMPLES) if sample else {"do_sample":False}
     with torch.no_grad():
         output = model.generate(**inputs,max_new_tokens=8,**settings)

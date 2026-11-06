@@ -11,9 +11,10 @@ from pathlib import Path
 import torch
 from datasets import concatenate_datasets
 from datasets import load_dataset
+from huggingface_hub import HfApi
 from huggingface_hub import hf_hub_download
 from transformers import AutoProcessor
-from transformers import Qwen3VLForConditionalGeneration
+from transformers import AutoModelForImageTextToText
 
 from models import MODELS
 
@@ -44,7 +45,13 @@ args = parser.parse_args()
 out = Path(args.out)
 out.mkdir(parents=True,exist_ok=True)
 repo,revision = MODELS[args.model]
-model = Qwen3VLForConditionalGeneration.from_pretrained(repo,revision=revision,dtype=torch.float16,device_map="cuda:0",attn_implementation="sdpa")
+# a model without a pinned revision uses the newest weights, whose exact revision is printed and saved below
+if revision is None:
+    revision = HfApi().model_info(repo).sha
+print(f"{args.model}: {repo} at revision {revision}")
+# the two models already run keep the single gpu setup of the first main run, the others are spread over every gpu kaggle gives
+first_setup = args.model in ("qwen3vl2b","qwen3vl4b")
+model = AutoModelForImageTextToText.from_pretrained(repo,revision=revision,dtype=torch.float16,device_map="cuda:0" if first_setup else "auto",attn_implementation="sdpa")
 processor = AutoProcessor.from_pretrained(repo,revision=revision)
 model.eval()
 
@@ -52,7 +59,7 @@ environment = {
     "model":repo,"revision":revision,"dtype":"float16","split":args.split,"per_version":args.per_version,
     "max_new_tokens":MAX_NEW_TOKENS,"prefill":PREFILL,"decoding":"greedy","python":sys.version,
     "torch":torch.__version__,"transformers":__import__("transformers").__version__,
-    "gpu":torch.cuda.get_device_name(0),"started":time.strftime("%Y-%m-%d %H:%M:%S"),
+    "gpu":torch.cuda.get_device_name(0),"gpus":torch.cuda.device_count(),"started":time.strftime("%Y-%m-%d %H:%M:%S"),
 }
 (out/f"environment_{args.model}.json").write_text(json.dumps(environment,indent=1),encoding="utf-8")
 print(f"{repo} at {revision[:8]} on {environment['gpu']} with transformers {environment['transformers']}")
@@ -61,8 +68,12 @@ print(f"{repo} at {revision[:8]} on {environment['gpu']} with transformers {envi
 def ask_model(image,question,prefill):
     """Return the greedy text answer of the model with its reply started by the prefill"""
     messages = [{"role":"user","content":[{"type":"image"},{"type":"text","text":question}]}]
-    prompt = processor.apply_chat_template(messages,tokenize=False,add_generation_prompt=True)+prefill
-    inputs = processor(text=[prompt],images=[image],return_tensors="pt").to(model.device)
+    prompt = processor.apply_chat_template(messages,tokenize=False,add_generation_prompt=True,enable_thinking=False)+prefill
+    # the chat template already holds every special token, so the processor adds none of its own
+    inputs = processor(text=[prompt],images=[image],return_tensors="pt",add_special_tokens=False).to(model.device)
+    # the other models need the image numbers in the same 16-bit format as their weights
+    if not first_setup:
+        inputs = inputs.to(dtype=model.dtype)
     with torch.no_grad():
         output = model.generate(**inputs,max_new_tokens=MAX_NEW_TOKENS,do_sample=False)
     # putting the prefill back in front so the scorer sees the whole answer
