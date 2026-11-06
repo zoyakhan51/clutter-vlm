@@ -51,7 +51,11 @@ if revision is None:
 print(f"{args.model}: {repo} at revision {revision}")
 # the two models already run keep the single gpu setup of the first main run, the others are spread over every gpu kaggle gives
 first_setup = args.model in ("qwen3vl2b","qwen3vl4b")
-model = AutoModelForImageTextToText.from_pretrained(repo,revision=revision,dtype=torch.float16,device_map="cuda:0" if first_setup else "auto",attn_implementation="sdpa")
+# the new models pick their own attention code because some of their parts (like gemma's audio part) can't use sdpa
+if first_setup:
+    model = AutoModelForImageTextToText.from_pretrained(repo,revision=revision,dtype=torch.float16,device_map="cuda:0",attn_implementation="sdpa")
+else:
+    model = AutoModelForImageTextToText.from_pretrained(repo,revision=revision,dtype=torch.float16,device_map="auto")
 processor = AutoProcessor.from_pretrained(repo,revision=revision)
 model.eval()
 
